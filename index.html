@@ -320,6 +320,23 @@
   .setrow .sl{font-size:13.5px}
   .setrow .sd{font-size:11.5px;color:var(--mist-dim);margin-top:2px;line-height:1.45}
   .danger{color:#d98a80!important;border-color:rgba(217,138,128,.35)!important}
+
+  /* Protokoll-Datumsbezug */
+  .linkbox{background:var(--card);border:1px solid var(--haze-soft);border-radius:var(--r);padding:13px 15px;margin-bottom:16px}
+  .link-row{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .link-lead{font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--mist-dim)}
+  .link-cur{font-family:var(--serif);font-size:15.5px;margin-top:2px}
+  /* Protokoll-Marker im Kalender */
+  .day .pf{position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:5px;height:5px;border-radius:50%;background:var(--candle)}
+  .day.has .pf{background:#12151f}
+  .day.empty-past{cursor:pointer;color:var(--mist-dim);background:var(--dusk);border:1px dashed var(--haze)}
+  .day.empty-past:active{transform:scale(.94)}
+  /* Protokoll-Karte im Sheet */
+  .pf-card{background:var(--dusk);border:1px solid var(--haze-soft);border-radius:var(--r-sm);padding:11px 13px;margin-top:8px;cursor:pointer}
+  .pf-card:active{border-color:var(--haze)}
+  .pf-b{font-family:var(--serif);font-size:13.5px;color:var(--moon);line-height:1.5}
+  .pf-e{font-size:12.5px;color:var(--mist);line-height:1.5;margin-top:5px}
+  .pf-s{font-size:11px;color:var(--candle-dim);margin-top:6px}
 </style>
 </head>
 <body>
@@ -474,9 +491,10 @@
       <section id="s-gedanken" class="screen">
         <div id="bridge-slot"></div>
         <div class="eyebrow">Gedankenprotokoll</div>
-        <p style="font-size:13px;color:var(--mist-dim);margin:0 4px 18px;line-height:1.55">
+        <p style="font-size:13px;color:var(--mist-dim);margin:0 4px 14px;line-height:1.55">
           Nicht der Auslöser macht das Gefühl — der Satz dazwischen macht es. Den holen wir jetzt raus.
         </p>
+        <div class="linkbox" id="link-slot"></div>
 
         <div class="card">
           <div class="step lit">
@@ -653,9 +671,10 @@ const RIPE = 3;
 
 let MOOD_C = SCHEMES.daemmerung.c.slice();
 let sel = { mood:null, emos:new Set(), social:new Set(), mark:null, theme:'' };
-let emoEdit = false, timer = null, tsec = 900, curTheme = '';
+let emoEdit = false, timer = null, tsec = 900, curTheme = '', curLinkDate = null;
 let calY = new Date().getFullYear(), calM = new Date().getMonth(), calSel = null;
 let editingId = null;
+let writeDate = null;   // Datum, für das gerade geschrieben wird (Standard: heute)
 
 const $ = s => document.querySelector(s);
 const iso = off => { const d = new Date(); d.setDate(d.getDate() + off); return d.toISOString().slice(0,10); };
@@ -669,16 +688,27 @@ function go(t) {
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   $('main').scrollTop = 0;
   if (t !== 'gedanken') { $('#bridge-slot').innerHTML = ''; curTheme = ''; }
-  if (t === 'neu' && !editingId) prefillToday();
+  if (t === 'gedanken') renderLinkPicker();
+  if (t === 'neu' && !editingId && !writeDate) { writeDate = iso(0); prefillToday(); }
+  if (t === 'neu') updateFormMode();
 }
 
 /* Wenn es für heute schon einen Eintrag gibt: bearbeiten statt zweiten anlegen */
-function prefillToday() {
-  const e = entries.find(x => x.d === iso(0));
-  $('#form-mode').textContent = e ? 'Heute bearbeiten' : '';
-  if (!e) return;
-  editingId = e.id;
-  loadIntoForm(e);
+function prefillFor(date) {
+  writeDate = date;
+  const e = entries.find(x => x.d === date);
+  if (e) { editingId = e.id; loadIntoForm(e); }
+  updateFormMode();
+}
+function prefillToday() { prefillFor(iso(0)); }
+
+function updateFormMode() {
+  const el = $('#form-mode');
+  if (!el) return;
+  const today = iso(0);
+  const has = entries.some(x => x.d === writeDate);
+  if (writeDate === today)      el.textContent = has ? 'Heute bearbeiten' : '';
+  else                          el.textContent = (has ? 'Bearbeiten · ' : 'Nachtragen · ') + fmt(writeDate);
 }
 function loadIntoForm(e) {
   $('#f-text').value = e.txt; $('#f-title').value = e.t;
@@ -695,12 +725,13 @@ function loadIntoForm(e) {
 }
 function resetForm() {
   editingId = null;
+  writeDate = iso(0);
   ['f-text','f-title','f-grat','f-see'].forEach(i => $('#'+i).value = '');
   sel = { mood:null, emos:new Set(), social:new Set(), mark:null, theme:'' };
   emoEdit = false;
   $('#mb-c').className = 'mbtn';
   $('#theme-slot').innerHTML = '';
-  $('#form-mode').textContent = '';
+  updateFormMode();
   ['sl-sleep','sl-energy','sl-move','sl-int'].forEach(i => { const n = $('#'+i); if (n) n.value = n.defaultValue; });
   renderForm();
 }
@@ -802,7 +833,7 @@ async function saveEntry() {
   const ex = $('#extra').open;
 
   const e = {
-    d: iso(0), t: title, txt, m: sel.mood, emos: [...sel.emos],
+    d: writeDate || iso(0), t: title, txt, m: sel.mood, emos: [...sel.emos],
     g: $('#f-grat').value.trim(), see: $('#f-see').value.trim(),
     theme, mark: sel.mark, tags: ['Tagesbericht'],
     intensity: ex ? +$('#sl-int').value : null,
@@ -884,10 +915,16 @@ function renderCal() {
     const d = document.createElement('div');
     d.className = 'day' + (e ? ' has ' + (e.m <= 2 ? 'dark' : 'light') : '') + (key === today ? ' today' : '') + (key === calSel ? ' sel' : '');
     d.textContent = n;
+    const hasProto = protocols.some(p => p.linked_date === key);
     if (e) {
       d.style.background = MOOD_C[e.m-1];
       if (e.mark === 'c') d.insertAdjacentHTML('beforeend', '<span class="rg"></span>');
+      if (hasProto) d.insertAdjacentHTML('beforeend', '<span class="pf"></span>');
       d.onclick = () => { calSel = (calSel === key ? null : key); renderCal(); renderResults(); openEntry(e); };
+    } else if (key <= today) {
+      d.classList.add('empty-past');
+      if (hasProto) d.insertAdjacentHTML('beforeend', '<span class="pf"></span>');
+      d.onclick = () => writeForDate(key);
     }
     grid.appendChild(d);
   }
@@ -918,6 +955,16 @@ function renderResults() {
 }
 
 /* ---------- Sheet ---------- */
+function protocolsForDate(date) {
+  const ps = protocols.filter(p => p.linked_date === date);
+  if (!ps.length) return '';
+  return `<div class="sh-block"><h5>Gedankenprotokoll${ps.length>1?'e':''} zu diesem Tag</h5>` +
+    ps.map(p => `<div class="pf-card" onclick="openProtocol(${JSON.stringify(p.theme||'').replace(/"/g,'&quot;')})">
+        <div class="pf-b">„${esc(p.belief)}"</div>
+        <div class="pf-e">${esc(p.balanced)}</div>
+        ${p.intensity_before!=null&&p.intensity_after!=null?`<div class="pf-s">${p.intensity_before}% → ${p.intensity_after}%</div>`:''}
+      </div>`).join('') + `</div>`;
+}
 function openEntry(e) {
   const blk = (t,v) => v ? `<div class="sh-block"><h5>${t}</h5><p>${esc(v)}</p></div>` : '';
   $('#sheet-body').innerHTML = `
@@ -930,6 +977,7 @@ function openEntry(e) {
     ${blk('Dankbar für', e.g)}
     ${blk('Daraus gesehen', e.see)}
     ${blk('Thema', e.theme)}
+    ${protocolsForDate(e.d)}
     <div class="sh-block" style="display:flex;gap:8px">
       <button class="btn small" onclick="editEntry('${e.id}')">Bearbeiten</button>
       <button class="btn small ghost danger" onclick="removeEntry('${e.id}')">Löschen</button>
@@ -941,10 +989,18 @@ function closeEntry() { $('#sheet').classList.remove('on'); }
 function editEntry(id) {
   const e = entries.find(x => x.id === id);
   if (!e) return;
-  if (e.d !== iso(0)) { toast('Nur der heutige Tag ist bearbeitbar'); return; }
-  closeEntry(); resetForm(); editingId = id; loadIntoForm(e);
-  $('#form-mode').textContent = 'Heute bearbeiten';
+  if (e.d !== iso(0)) { toast('Geschriebene Tage bleiben stehen — nur heute ist änderbar'); return; }
+  closeEntry(); resetForm(); editingId = id; writeDate = e.d; loadIntoForm(e);
+  updateFormMode();
   go('neu');
+}
+
+// Leeren Vergangenheitstag aus dem Kalender nachtragen
+function writeForDate(date) {
+  closeEntry(); resetForm(); writeDate = date;
+  updateFormMode();
+  go('neu');
+  $('#f-text').focus();
 }
 async function removeEntry(id) {
   const e = entries.find(x => x.id === id);
@@ -982,8 +1038,10 @@ function renderThemes() {
   }).join('');
 }
 
-function openProtocol(theme) {
+function openProtocol(theme, linkDate) {
   go('gedanken'); curTheme = theme;
+  curLinkDate = linkDate || null;
+  renderLinkPicker();
   const m = themeCounts()[theme];
   const past = protocols.filter(p => p.theme === theme).sort((a,b) => b.entry_date.localeCompare(a.entry_date));
   let html = `<div class="bridge">
@@ -1003,6 +1061,38 @@ function openProtocol(theme) {
   $('#gp-a').placeholder = `Wann kam „${theme}" zuletzt hoch? Nur die Fakten.`;
 }
 
+function renderLinkPicker() {
+  const slot = $('#link-slot');
+  if (!slot) return;
+  const label = curLinkDate
+    ? (curLinkDate === iso(0) ? 'heute' : fmt(curLinkDate))
+    : 'keinem Tag';
+  slot.innerHTML = `
+    <div class="link-row">
+      <div>
+        <div class="link-lead">Verknüpft mit</div>
+        <div class="link-cur">${label}</div>
+      </div>
+      <button class="btn small ghost" onclick="pickLinkDate()">${curLinkDate ? 'Ändern' : 'Tag wählen'}</button>
+    </div>
+    ${curLinkDate ? `<button class="skip" onclick="curLinkDate=null;renderLinkPicker()" style="margin-top:8px">Verknüpfung lösen</button>` : ''}`;
+}
+
+function pickLinkDate() {
+  // letzte 14 Tage als schnelle Auswahl
+  const opts = [];
+  for (let i = 0; i < 14; i++) {
+    const d = iso(-i);
+    const e = entries.find(x => x.d === d);
+    opts.push(`<div class="chip${d===curLinkDate?' sel':''}" onclick="setLinkDate('${d}')">${i===0?'heute':fmt(d)}${e?' ·':''}</div>`);
+  }
+  $('#link-slot').innerHTML = `
+    <div class="link-lead" style="margin-bottom:8px">Mit welchem Tag verknüpfen?</div>
+    <div class="chips">${opts.join('')}</div>
+    <button class="skip" onclick="renderLinkPicker()" style="margin-top:10px">Abbrechen</button>`;
+}
+function setLinkDate(d) { curLinkDate = d; renderLinkPicker(); }
+
 async function finishProtocol() {
   const b = $('#gp-b').value.trim(), e = $('#gp-e').value.trim();
   if (!b || !e) { alert('B und E sind der Kern: der Satz im Kopf, und was stattdessen stimmt.'); return; }
@@ -1010,7 +1100,7 @@ async function finishProtocol() {
   const before = src.length ? Math.round(src.reduce((s,x) => s + x.intensity, 0) / src.length) : null;
 
   await insertProtocol({
-    theme: curTheme || null, entry_date: iso(0),
+    theme: curTheme || null, entry_date: iso(0), linked_date: curLinkDate,
     situation: $('#gp-a').value.trim() || null,
     belief: b, feeling: $('#gp-c1').value.trim() || null,
     intensity_before: before,
@@ -1019,7 +1109,8 @@ async function finishProtocol() {
     balanced: e, intensity_after: +$('#v-after').textContent
   });
   ['gp-a','gp-b','gp-c1','gp-d1','gp-d2','gp-e'].forEach(i => { const n = $('#'+i); if (n) n.value = ''; });
-  curTheme = ''; $('#bridge-slot').innerHTML = '';
+  curTheme = ''; curLinkDate = null; $('#bridge-slot').innerHTML = '';
+  renderLinkPicker();
   renderAll(); go('muster'); toast('Protokoll gespeichert');
 }
 
