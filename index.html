@@ -340,6 +340,42 @@
   .pf-b{font-family:var(--serif);font-size:13.5px;color:var(--moon);line-height:1.5}
   .pf-e{font-size:12.5px;color:var(--mist);line-height:1.5;margin-top:5px}
   .pf-s{font-size:11px;color:var(--candle-dim);margin-top:6px}
+
+  /* ===== Wins ===== */
+  .winbar{display:flex;gap:7px}
+  .winbar input{flex:1;font-family:var(--sans);font-size:14px}
+  .winbar button{border:1px solid var(--candle-dim);background:none;color:var(--candle);
+    border-radius:var(--r-sm);padding:0 16px;font-family:var(--sans);font-size:13px;cursor:pointer;white-space:nowrap}
+  .winbar button:active{background:rgba(228,169,107,.12)}
+
+  .win{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--haze-soft)}
+  .win:last-child{border-bottom:none}
+  .win .tick{width:14px;height:14px;flex-shrink:0;margin-top:3px}
+  .win .tick svg{width:14px;height:14px;stroke:var(--candle);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+  .win .wt{flex:1;font-family:var(--serif);font-size:14.5px;line-height:1.5;color:var(--moon)}
+  .win .wd{font-size:10px;color:var(--mist-dim);letter-spacing:.4px;text-transform:uppercase;margin-bottom:2px}
+  .win .wx{background:none;border:none;color:var(--mist-dim);font-size:17px;line-height:1;cursor:pointer;padding:0 2px}
+  #day-wins{margin-top:6px}
+  .win-empty{color:var(--mist-dim);font-size:12.5px;font-style:italic;padding:14px 0 4px;line-height:1.5}
+
+  /* ===== Sperre ===== */
+  #lock{position:absolute;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;padding:0 26px;
+    background:radial-gradient(120% 60% at 50% 8%, rgba(228,169,107,0.10), transparent 60%), var(--night)}
+  #lock h2{font-family:var(--serif);font-size:21px;font-weight:500;text-align:center;margin:16px 0 0}
+  .lock-sub{font-size:12.5px;color:var(--mist-dim);text-align:center;margin-top:8px;
+    line-height:1.5;min-height:34px;padding:0 10px}
+  .lock-sub.err{color:#d98a80}
+  .lock-dots{display:flex;gap:11px;margin:6px 0 26px}
+  .lock-dots i{width:11px;height:11px;border-radius:50%;border:1.5px solid var(--haze);display:block;transition:.15s}
+  .lock-dots i.on{background:var(--candle);border-color:var(--candle)}
+  .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:13px;width:100%;max-width:280px}
+  .pad button{aspect-ratio:1;border-radius:50%;border:1px solid var(--haze-soft);background:var(--dusk);
+    color:var(--moon);font-family:var(--serif);font-size:23px;cursor:pointer}
+  .pad button:active{background:var(--haze-soft)}
+  .pad .ghostkey{background:none;border-color:transparent;font-family:var(--sans);font-size:14px;color:var(--mist)}
+  #app-body.blurred main,
+  #app-body.blurred nav{filter:blur(18px);opacity:.35;pointer-events:none;transition:filter .12s}
 </style>
 </head>
 <body>
@@ -360,6 +396,25 @@
            onkeydown="if(event.key==='Enter')doLogin()">
     <button class="btn" id="login-btn" onclick="doLogin()">Anmelden</button>
     <div class="err" id="login-err"></div>
+  </div>
+
+  <!-- ===== Sperre ===== -->
+  <div id="lock" class="hidden">
+    <svg class="mark" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#E4A96B" stroke-width="1.4" stroke-linecap="round">
+      <circle cx="12" cy="5" r="2.2"/><path d="M12 7.5V21"/><path d="M7.5 11h9"/><path d="M4 15a8 8 0 0 0 16 0"/>
+    </svg>
+    <h2 id="lock-title">Anker ist gesperrt</h2>
+    <div class="lock-sub" id="lock-sub"></div>
+    <div class="lock-dots" id="lock-dots"></div>
+    <div class="pad">
+      <button onclick="lockKey('1')">1</button><button onclick="lockKey('2')">2</button><button onclick="lockKey('3')">3</button>
+      <button onclick="lockKey('4')">4</button><button onclick="lockKey('5')">5</button><button onclick="lockKey('6')">6</button>
+      <button onclick="lockKey('7')">7</button><button onclick="lockKey('8')">8</button><button onclick="lockKey('9')">9</button>
+      <button class="ghostkey" onclick="lockDel()">←</button>
+      <button onclick="lockKey('0')">0</button>
+      <button class="ghostkey" id="lock-ok" onclick="lockSubmit()" style="display:none">OK</button>
+    </div>
+    <button class="skip" onclick="signOut()" style="margin-top:20px">PIN vergessen — abmelden</button>
   </div>
 
   <!-- ===== App ===== -->
@@ -399,6 +454,9 @@
           </div>
           <button class="btn small" onclick="go('neu')">Start</button>
         </div>
+
+        <div class="eyebrow">Was zuletzt lief</div>
+        <div class="card" id="recent-wins"></div>
 
         <div class="eyebrow">Zuletzt geschrieben</div>
         <div id="recent"></div>
@@ -447,6 +505,21 @@
           </div>
         </div>
 
+        <div class="zug">
+          <span class="bullet"></span>
+          <h3>Was heute lief</h3>
+          <div class="hint">Alles zählt. Aufgestanden, geduscht, eingekauft, jemandem geschrieben.
+            An schweren Tagen liegt die Latte tiefer — das ist kein Nachlassen, das ist der Sinn der Sache.</div>
+          <div class="field">
+            <div class="winbar">
+              <input type="text" id="f-win" placeholder="Eine Sache …"
+                     onkeydown="if(event.key==='Enter')addWinForDay()">
+              <button onclick="addWinForDay()">Merken</button>
+            </div>
+            <div id="day-wins"></div>
+          </div>
+        </div>
+
         <div class="markerbox">
           <div class="lead">Bleibt heute etwas hängen?</div>
           <div class="onetap">
@@ -457,32 +530,12 @@
 
         <details class="extra" id="extra" style="margin-top:12px">
           <summary>Weiter gehen — optional</summary>
-          <div class="slider-row" style="margin-top:6px">
-            <div class="top"><span>Wie stark war das Gefühl?</span><b><span id="v-int">50</span> %</b></div>
-            <input type="range" id="sl-int" min="0" max="100" step="5" value="50" oninput="document.getElementById('v-int').textContent=this.value">
-          </div>
-          <div style="margin-top:22px">
+          <div style="margin-top:16px">
             <label class="f">Was du daraus siehst</label>
             <div style="font-size:11.5px;color:var(--mist-dim);margin:-4px 0 8px;line-height:1.5">
               Ein Satz. Wenn keiner kommt: leer lassen. Das ist auch eine Antwort.
             </div>
             <textarea id="f-see" rows="3" placeholder="Du hast heute gemerkt, dass …"></textarea>
-          </div>
-          <div class="slider-row" style="margin-top:24px">
-            <div class="top"><span>Schlaf</span><b><span id="v-sleep">7</span> h</b></div>
-            <input type="range" id="sl-sleep" min="3" max="11" step="0.5" value="7" oninput="document.getElementById('v-sleep').textContent=this.value">
-          </div>
-          <div class="slider-row">
-            <div class="top"><span>Energie</span><b><span id="v-energy">3</span>/5</b></div>
-            <input type="range" id="sl-energy" min="1" max="5" value="3" oninput="document.getElementById('v-energy').textContent=this.value">
-          </div>
-          <div class="slider-row">
-            <div class="top"><span>Bewegung</span><b><span id="v-move">0</span> min</b></div>
-            <input type="range" id="sl-move" min="0" max="120" step="10" value="0" oninput="document.getElementById('v-move').textContent=this.value">
-          </div>
-          <div class="slider-row" style="margin-top:16px">
-            <div class="top" style="margin-bottom:8px"><span>Sozialer Kontakt</span></div>
-            <div class="chips" id="social"></div>
           </div>
         </details>
 
@@ -514,6 +567,11 @@
             <div class="abc">C</div><h4>Was folgte</h4>
             <div class="hint">Gefühl benennen. Was hast du dann getan?</div>
             <input type="text" id="gp-c1" placeholder="z. B. Überforderung">
+            <div class="slider-row" style="margin-top:12px">
+              <div class="top"><span>Wie stark, als es passierte?</span><b><span id="v-before">70</span> %</b></div>
+              <input type="range" min="0" max="100" step="5" value="70"
+                     oninput="document.getElementById('v-before').textContent=this.value">
+            </div>
           </div>
           <div class="step">
             <div class="abc">D</div><h4>Infrage stellen</h4>
@@ -527,26 +585,13 @@
             <textarea id="gp-e" rows="3" placeholder="Was stimmt wirklich?"></textarea>
             <div class="slider-row" style="margin-top:12px">
               <div class="top"><span>Gefühl jetzt</span><b><span id="v-after">50</span> %</b></div>
-              <input type="range" min="0" max="100" step="5" value="50" oninput="document.getElementById('v-after').textContent=this.value">
+              <input type="range" min="0" max="100" step="5" value="50" oninput="v_after.textContent=this.value">
             </div>
           </div>
         </div>
         <button class="btn" onclick="finishProtocol()">Protokoll abschließen</button>
 
-        <div class="eyebrow">Wins-Log</div>
-        <div class="card">
-          <div style="font-size:13px;color:var(--mist);line-height:1.6">
-            Kleine Dinge, die gut liefen. Gegen die Negativ-Verzerrung an schweren Tagen.
-          </div>
-          <div style="display:flex;gap:7px;margin-top:12px">
-            <input type="text" id="win-new" placeholder="Ein Win …" style="flex:1;font-size:14px;font-family:var(--sans)"
-                   onkeydown="if(event.key==='Enter')addWin()">
-            <button onclick="addWin()" style="border:1px solid var(--candle-dim);background:none;color:var(--candle);
-              border-radius:var(--r-sm);padding:0 15px;font-family:var(--sans);font-size:13px;cursor:pointer">Merken</button>
-          </div>
-          <div id="wins-list" style="margin-top:14px"></div>
-        </div>
-      </section>
+        </section>
 
       <!-- ============ VERLAUF ============ -->
       <section id="s-verlauf" class="screen">
@@ -576,9 +621,6 @@
         <div class="eyebrow">Was noch kreist</div>
         <div class="card" id="themes"></div>
 
-        <div class="eyebrow">Was in den Zahlen steht</div>
-        <div id="insight-slot"></div>
-
         <div class="eyebrow">Häufigste Gefühle</div>
         <div class="card" id="emo-bars"></div>
 
@@ -588,6 +630,14 @@
           <div class="horizon-labels" style="justify-content:space-around">
             <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>
           </div>
+        </div>
+
+        <div class="eyebrow">Was gelaufen ist</div>
+        <div class="card">
+          <div style="font-size:12px;color:var(--mist-dim);margin-bottom:12px;line-height:1.5">
+            Alles, was du dir gemerkt hast — von unten nach oben gewachsen.
+          </div>
+          <div id="wins-overview"></div>
         </div>
 
         <div class="eyebrow">Dankbarkeit</div>
@@ -603,6 +653,9 @@
         <div class="card">
           <div id="scheme-list"></div>
         </div>
+
+        <div class="eyebrow">Sperre</div>
+        <div class="card" id="security-slot"></div>
 
         <div class="eyebrow">Daten</div>
         <div class="card">
@@ -667,13 +720,11 @@ const SCHEMES = {
 };
 const MOOD_L = ['schwer','gedämpft','neutral','gut','leicht'];
 const DEFAULT_EMOS = ['ruhig','müde','überfordert','dankbar','gereizt','hoffnungsvoll','einsam','stolz','ängstlich','zufrieden','leer','wach'];
-const SOCIAL = ['allein','Familie','Freunde','Arbeit','Scotty'];
 const MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
-const MIN_N = 8;
 const RIPE = 3;
 
 let MOOD_C = SCHEMES.daemmerung.c.slice();
-let sel = { mood:null, emos:new Set(), social:new Set(), mark:null, theme:'' };
+let sel = { mood:null, emos:new Set(), mark:null, theme:'' };
 let emoEdit = false, timer = null, tsec = 900, curTheme = '', curLinkDate = null;
 let calY = new Date().getFullYear(), calM = new Date().getMonth(), calSel = null;
 let editingId = null;
@@ -701,7 +752,7 @@ function prefillFor(date) {
   writeDate = date;
   const e = entries.find(x => x.d === date);
   if (e) { editingId = e.id; loadIntoForm(e); }
-  updateFormMode();
+  updateFormMode(); renderDayWins();
 }
 function prefillToday() { prefillFor(iso(0)); }
 
@@ -717,11 +768,6 @@ function loadIntoForm(e) {
   $('#f-text').value = e.txt; $('#f-title').value = e.t;
   $('#f-grat').value = e.g || ''; $('#f-see').value = e.see || '';
   sel.mood = e.m; sel.emos = new Set(e.emos); sel.mark = e.mark; sel.theme = e.theme || '';
-  sel.social = new Set(e.social || []);
-  if (e.sleep != null) { $('#sl-sleep').value = e.sleep; $('#v-sleep').textContent = e.sleep; }
-  if (e.energy) { $('#sl-energy').value = e.energy; $('#v-energy').textContent = e.energy; }
-  if (e.movement != null) { $('#sl-move').value = e.movement; $('#v-move').textContent = e.movement; }
-  if (e.intensity != null) { $('#sl-int').value = e.intensity; $('#v-int').textContent = e.intensity; }
   renderForm();
   document.querySelectorAll('.mood').forEach((n,i) => n.classList.toggle('sel', i+1 === e.m));
   if (e.mark === 'c') setMark('c');
@@ -730,13 +776,13 @@ function resetForm() {
   editingId = null;
   writeDate = iso(0);
   ['f-text','f-title','f-grat','f-see'].forEach(i => $('#'+i).value = '');
-  sel = { mood:null, emos:new Set(), social:new Set(), mark:null, theme:'' };
+  sel = { mood:null, emos:new Set(), mark:null, theme:'' };
   emoEdit = false;
   $('#mb-c').className = 'mbtn';
   $('#theme-slot').innerHTML = '';
   updateFormMode();
-  ['sl-sleep','sl-energy','sl-move','sl-int'].forEach(i => { const n = $('#'+i); if (n) n.value = n.defaultValue; });
-  renderForm();
+  const w = $('#f-win'); if (w) w.value = '';
+  renderForm(); renderDayWins();
 }
 
 /* ---------- Timer ---------- */
@@ -790,13 +836,6 @@ function renderForm() {
     m.appendChild(b);
   });
   renderEmos();
-  const s = $('#social'); s.innerHTML = '';
-  SOCIAL.forEach(t => {
-    const c = document.createElement('div');
-    c.className = 'chip' + (sel.social.has(t) ? ' sel' : ''); c.textContent = t;
-    c.onclick = () => { c.classList.toggle('sel'); sel.social.has(t) ? sel.social.delete(t) : sel.social.add(t); };
-    s.appendChild(c);
-  });
 }
 
 function renderEmos() {
@@ -833,17 +872,15 @@ async function saveEntry() {
 
   const typed = $('#f-theme');
   const theme = sel.theme || (typed ? typed.value.trim() : '');
-  const ex = $('#extra').open;
+
+  // noch nicht abgeschickter Win im Feld? mitnehmen statt verlieren
+  const pending = $('#f-win').value.trim();
+  if (pending) { await insertWin(pending, writeDate || iso(0)); $('#f-win').value = ''; }
 
   const e = {
     d: writeDate || iso(0), t: title, txt, m: sel.mood, emos: [...sel.emos],
     g: $('#f-grat').value.trim(), see: $('#f-see').value.trim(),
-    theme, mark: sel.mark, tags: ['Tagesbericht'],
-    intensity: ex ? +$('#sl-int').value : null,
-    sleep:    ex ? +$('#sl-sleep').value : null,
-    energy:   ex ? +$('#sl-energy').value : null,
-    movement: ex ? +$('#sl-move').value : null,
-    social: [...sel.social]
+    theme, mark: sel.mark, tags: ['Tagesbericht']
   };
   $('#save-btn').disabled = true; $('#save-btn').textContent = 'Speichere …';
   await upsertEntry(e);
@@ -1099,8 +1136,7 @@ function setLinkDate(d) { curLinkDate = d; renderLinkPicker(); }
 async function finishProtocol() {
   const b = $('#gp-b').value.trim(), e = $('#gp-e').value.trim();
   if (!b || !e) { alert('B und E sind der Kern: der Satz im Kopf, und was stattdessen stimmt.'); return; }
-  const src = curTheme ? entries.filter(x => x.theme === curTheme && x.intensity != null) : [];
-  const before = src.length ? Math.round(src.reduce((s,x) => s + x.intensity, 0) / src.length) : null;
+  const before = +$('#v-before').textContent;
 
   await insertProtocol({
     theme: curTheme || null, entry_date: iso(0), linked_date: curLinkDate,
@@ -1115,12 +1151,6 @@ async function finishProtocol() {
   curTheme = ''; curLinkDate = null; $('#bridge-slot').innerHTML = '';
   renderLinkPicker();
   renderAll(); go('muster'); toast('Protokoll gespeichert');
-}
-
-async function addWin() {
-  const i = $('#win-new'); const v = i.value.trim();
-  if (!v) return;
-  i.value = ''; await insertWin(v); renderWins();
 }
 
 /* ---------- Statistik ---------- */
@@ -1160,28 +1190,6 @@ function renderNudge() {
     </div>`;
 }
 
-function renderInsight() {
-  const slot = $('#insight-slot');
-  const ws = entries.filter(e => typeof e.sleep === 'number');
-  if (ws.length < MIN_N) {
-    slot.innerHTML = `<div class="insight locked">
-      <h4>Noch zu wenig Daten</h4>
-      <p>Anker braucht mindestens ${MIN_N} Einträge mit Schlafangabe, bevor es hier etwas behauptet.
-      Aktuell sind es ${ws.length}. Aus weniger lässt sich nichts ablesen, was nicht auch Zufall sein könnte.</p>
-    </div>`;
-    return;
-  }
-  const heavy = ws.filter(e => e.m <= 2), light = ws.filter(e => e.m >= 4);
-  const sh = heavy.filter(e => e.sleep < 6).length, sl = light.filter(e => e.sleep < 6).length;
-  slot.innerHTML = `<div class="insight">
-    <h4>Schlaf und schwere Tage</h4>
-    <p>An ${sh} von ${heavy.length} schweren Tagen hast du unter 6 Stunden geschlafen.
-    An leichten Tagen war das ${sl} von ${light.length} Mal der Fall.</p>
-    <div class="n-note">Beschreibung, keine Erklärung. Der Zusammenhang kann in beide Richtungen laufen —
-    schlechter Schlaf kann den Tag schwer machen, ein schwerer Tag den Schlaf. Basis: ${ws.length} Einträge.</div>
-  </div>`;
-}
-
 function renderEmoBars() {
   const counts = {};
   entries.forEach(e => (e.emos || []).forEach(x => counts[x] = (counts[x] || 0) + 1));
@@ -1212,11 +1220,66 @@ function renderGratitude() {
     || '<div style="color:var(--mist-dim);font-size:12.5px;font-style:italic">Noch nichts gesammelt.</div>';
 }
 
-function renderWins() {
-  const box = $('#wins-list');
-  if (!wins.length) { box.className = ''; box.innerHTML = '<div style="color:var(--mist-dim);font-size:12.5px;font-style:italic">Noch nichts notiert.</div>'; return; }
-  box.className = 'glist';
-  box.innerHTML = wins.slice(0,4).map(w => `<div><span>${fmt(w.entry_date)}</span>${esc(w.text)}</div>`).join('');
+const TICK = '<svg viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5"/></svg>';
+
+/* Wins des Tages, für den gerade geschrieben wird */
+function renderDayWins() {
+  const box = $('#day-wins');
+  if (!box) return;
+  const day = writeDate || iso(0);
+  const list = wins.filter(w => w.entry_date === day);
+  if (!list.length) {
+    box.innerHTML = '<div class="win-empty">Noch nichts gemerkt. Muss auch nicht — aber das Kleinste zählt schon.</div>';
+    return;
+  }
+  box.innerHTML = list.map(w => `<div class="win">
+      <span class="tick">${TICK}</span>
+      <span class="wt">${esc(w.text)}</span>
+      <button class="wx" onclick="removeWin('${w.id}')" aria-label="Entfernen">×</button>
+    </div>`).join('');
+}
+
+async function addWinForDay() {
+  const i = $('#f-win');
+  const v = i.value.trim();
+  if (!v) return;
+  i.value = '';
+  await insertWin(v, writeDate || iso(0));
+  renderDayWins(); renderRecentWins(); renderWinsOverview();
+  i.focus();
+}
+
+async function removeWin(id) {
+  if (await deleteWin(id)) { renderDayWins(); renderRecentWins(); renderWinsOverview(); }
+}
+
+/* Die letzten Wins auf dem Heute-Screen */
+function renderRecentWins() {
+  const box = $('#recent-wins');
+  if (!box) return;
+  const list = wins.slice(0, 4);
+  if (!list.length) {
+    box.innerHTML = '<div class="win-empty" style="padding:2px 0">Hier sammelt sich, was gelaufen ist. Auch das Kleine.</div>';
+    return;
+  }
+  box.innerHTML = list.map(w => `<div class="win">
+      <span class="tick">${TICK}</span>
+      <span class="wt"><span class="wd">${fmt(w.entry_date)}</span>${esc(w.text)}</span>
+    </div>`).join('');
+}
+
+/* Gesamtübersicht unter Muster — bewusst ohne Zahlen */
+function renderWinsOverview() {
+  const box = $('#wins-overview');
+  if (!box) return;
+  if (!wins.length) {
+    box.innerHTML = '<div class="win-empty" style="padding:2px 0">Noch nichts gesammelt.</div>';
+    return;
+  }
+  box.innerHTML = wins.slice(0, 40).map(w => `<div class="win">
+      <span class="tick">${TICK}</span>
+      <span class="wt"><span class="wd">${fmt(w.entry_date)}</span>${esc(w.text)}</span>
+    </div>`).join('');
 }
 
 /* ---------- Farbschema ---------- */
@@ -1240,7 +1303,8 @@ function setScheme(k) {
 /* ---------- Alles ---------- */
 function renderAll() {
   renderHorizon(); renderLists(); renderStats(); renderThemes();
-  renderGratitude(); renderInsight(); renderEmoBars(); renderWeekday(); renderWins();
+  renderGratitude(); renderEmoBars(); renderWeekday();
+  renderRecentWins(); renderWinsOverview(); renderDayWins();
 }
 
 /* ---------- Start ---------- */
@@ -1248,10 +1312,12 @@ async function boot() {
   const u = await currentUser();
   if (!u) { $('#loader').classList.add('hidden'); $('#auth').classList.remove('hidden'); return; }
   $('#auth').classList.add('hidden');
+  // Sperre vor dem Rendern hochziehen, damit nichts aufblitzt
+  if (hasPin()) showLock('check');
   await loadAll();
   MOOD_C = SCHEMES[settings.scheme]?.c.slice() || SCHEMES.daemmerung.c.slice();
   MOOD_C.forEach((c,i) => document.documentElement.style.setProperty('--m' + (i+1), c));
-  renderForm(); renderSchemes(); renderAll(); syncBadge(); flushOutbox();
+  renderForm(); renderSchemes(); renderAll(); renderSecurity(); syncBadge(); flushOutbox();
   $('#user-mail').textContent = u.email;
   $('#loader').classList.add('hidden');
   $('#app-body').classList.remove('hidden');
@@ -1351,7 +1417,7 @@ async function loadAll() {
   const [e, p, w, s] = await Promise.all([
     sb.from('anker_entries').select('*').order('entry_date', { ascending: false }),
     sb.from('anker_protocols').select('*').order('entry_date', { ascending: false }),
-    sb.from('anker_wins').select('*').order('entry_date', { ascending: false }).limit(50),
+    sb.from('anker_wins').select('*').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(300),
     sb.from('anker_settings').select('*').eq('user_id', USER.id).maybeSingle()
   ]);
 
@@ -1387,11 +1453,10 @@ const fromRow = r => ({
 
 const toRow = e => ({
   user_id: USER.id, entry_date: e.d, title: e.t, body: e.txt, mood: e.m,
-  emotions: e.emos || [], intensity: e.intensity ?? null,
+  emotions: e.emos || [],
   gratitude: e.g || null, insight: e.see || null, theme: e.theme || null,
   recurring: e.mark === 'c',
-  sleep_hours: e.sleep ?? null, energy: e.energy ?? null, movement: e.movement ?? null,
-  social: e.social || [], tags: e.tags || ['Tagesbericht']
+  tags: e.tags || ['Tagesbericht']
 });
 
 /* ---------- Schreiben ---------- */
@@ -1421,8 +1486,8 @@ async function insertProtocol(p) {
   await loadAll();
 }
 
-async function insertWin(text) {
-  const row = { user_id: USER.id, entry_date: iso(0), text };
+async function insertWin(text, date) {
+  const row = { user_id: USER.id, entry_date: date || iso(0), text };
   if (!navigator.onLine) { outbox.push({ kind: 'win', row }); wins.unshift(row); syncBadge(); return; }
   const { error } = await sb.from('anker_wins').insert(row);
   if (error) { outbox.push({ kind: 'win', row }); syncBadge(); return; }
@@ -1433,6 +1498,13 @@ async function saveSettings() {
   const row = { user_id: USER.id, scheme: settings.scheme, emotions: settings.emotions, updated_at: new Date().toISOString() };
   if (!navigator.onLine) { outbox.push({ kind: 'settings', row }); syncBadge(); return; }
   await sb.from('anker_settings').upsert(row);
+}
+
+async function deleteWin(id) {
+  const { error } = await sb.from('anker_wins').delete().eq('id', id);
+  if (error) { toast('Löschen fehlgeschlagen'); return false; }
+  await loadAll();
+  return true;
 }
 
 async function deleteEntry(id) {
@@ -1492,6 +1564,161 @@ function toast(msg) {
   t.textContent = msg; t.classList.add('on');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('on'), 2600);
+}
+
+/* ============================================================
+   ANKER — Bildschirmsperre
+   PIN gegen den realistischen Fall: jemand nimmt das entsperrte
+   Handy in die Hand. Kein Ersatz für die Gerätesperre.
+   ============================================================ */
+
+const LK = { pin:'anker_pin', salt:'anker_pin_salt', delay:'anker_lock_delay' };
+let lockPending = '';        // eingegebene Ziffern
+let lockMode = 'check';      // 'check' | 'set' | 'confirm'
+let lockFirst = '';          // erste Eingabe beim Einrichten
+let hiddenSince = 0;
+let unlocked = false;
+
+const hasPin   = () => !!localStorage.getItem(LK.pin);
+const lockDelay = () => {
+  const v = localStorage.getItem(LK.delay);
+  return v === null ? 60 : parseInt(v, 10);   // Sekunden; -1 = aus
+};
+
+async function hashPin(pin) {
+  let salt = localStorage.getItem(LK.salt);
+  if (!salt) {
+    salt = [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2,'0')).join('');
+    localStorage.setItem(LK.salt, salt);
+  }
+  const buf = new TextEncoder().encode(salt + '|' + pin);
+  const dig = await crypto.subtle.digest('SHA-256', buf);
+  return [...new Uint8Array(dig)].map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+/* ---------- Anzeige ---------- */
+function showLock(mode) {
+  lockMode = mode || 'check';
+  lockPending = ''; lockFirst = '';
+  unlocked = false;
+  document.getElementById('lock').classList.remove('hidden');
+  document.getElementById('app-body').classList.add('blurred');
+  renderLock();
+}
+function hideLock() {
+  unlocked = true;
+  document.getElementById('lock').classList.add('hidden');
+  document.getElementById('app-body').classList.remove('blurred');
+}
+
+function lockTitle() {
+  if (lockMode === 'set')     return 'Neue PIN wählen';
+  if (lockMode === 'confirm') return 'PIN wiederholen';
+  return 'Anker ist gesperrt';
+}
+function lockSub() {
+  if (lockMode === 'set')     return 'Vier bis sechs Ziffern. Merk sie dir gut — vergessen heißt neu anmelden.';
+  if (lockMode === 'confirm') return 'Noch einmal, zur Sicherheit.';
+  return '';
+}
+
+function renderLock(err) {
+  document.getElementById('lock-title').textContent = lockTitle();
+  document.getElementById('lock-sub').textContent = err || lockSub();
+  document.getElementById('lock-sub').className = 'lock-sub' + (err ? ' err' : '');
+  const dots = document.getElementById('lock-dots');
+  dots.innerHTML = Array.from({length: 6}, (_, i) =>
+    `<i class="${i < lockPending.length ? 'on' : ''}"></i>`).join('');
+  document.getElementById('lock-ok').style.display = lockPending.length >= 4 ? 'block' : 'none';
+}
+
+/* ---------- Eingabe ---------- */
+function lockKey(n) {
+  if (lockPending.length >= 6) return;
+  lockPending += n;
+  renderLock();
+  if (lockPending.length === 6) lockSubmit();
+}
+function lockDel() { lockPending = lockPending.slice(0, -1); renderLock(); }
+
+async function lockSubmit() {
+  if (lockPending.length < 4) return;
+  const pin = lockPending;
+
+  if (lockMode === 'set') {
+    lockFirst = pin; lockPending = ''; lockMode = 'confirm'; renderLock();
+    return;
+  }
+  if (lockMode === 'confirm') {
+    if (pin !== lockFirst) {
+      lockPending = ''; lockMode = 'set'; renderLock('Stimmt nicht überein. Noch einmal von vorn.');
+      return;
+    }
+    localStorage.setItem(LK.pin, await hashPin(pin));
+    hideLock(); renderSecurity(); toast('PIN aktiv');
+    return;
+  }
+  // check
+  const h = await hashPin(pin);
+  if (h === localStorage.getItem(LK.pin)) { hideLock(); }
+  else { lockPending = ''; renderLock('Falsche PIN.'); if (navigator.vibrate) navigator.vibrate(120); }
+}
+
+/* ---------- Steuerung ---------- */
+function lockNow() { if (hasPin()) showLock('check'); }
+
+function setupPin()  { showLock('set'); }
+function removePin() {
+  if (!confirm('PIN entfernen? Dann ist das Tagebuch offen, sobald jemand die App öffnet.')) return;
+  localStorage.removeItem(LK.pin); localStorage.removeItem(LK.salt);
+  renderSecurity(); toast('PIN entfernt');
+}
+function setLockDelay(sec) { localStorage.setItem(LK.delay, String(sec)); renderSecurity(); }
+
+/* Wegschalten: Inhalt sofort unkenntlich, damit die App-Übersicht nichts zeigt */
+document.addEventListener('visibilitychange', () => {
+  const body = document.getElementById('app-body');
+  if (!body) return;
+  if (document.hidden) {
+    hiddenSince = Date.now();
+    if (hasPin() && lockDelay() >= 0) body.classList.add('blurred');
+  } else {
+    const away = (Date.now() - hiddenSince) / 1000;
+    const d = lockDelay();
+    if (hasPin() && d >= 0 && away >= d) showLock('check');
+    else body.classList.remove('blurred');
+  }
+});
+
+/* ---------- Einstellungs-Block ---------- */
+function renderSecurity() {
+  const box = document.getElementById('security-slot');
+  if (!box) return;
+  const d = lockDelay();
+  const opts = [[0,'sofort'], [60,'nach 1 Min'], [300,'nach 5 Min'], [-1,'aus']];
+  box.innerHTML = `
+    <div class="setrow">
+      <div><div class="sl">PIN-Sperre</div>
+<div class="sd">${hasPin() ? 'Aktiv — beim Öffnen wird gefragt.' : 'Aus. Wer das Handy in der Hand hat, liest mit.'}</div></div>
+      ${hasPin()
+        ? `<button class="btn small ghost danger" onclick="removePin()">Entfernen</button>`
+        : `<button class="btn small" onclick="setupPin()">Einrichten</button>`}
+    </div>
+    ${hasPin() ? `
+    <div class="setrow" style="display:block">
+      <div class="sl" style="margin-bottom:9px">Sperren</div>
+      <div class="chips">${opts.map(([v,l]) =>
+        `<div class="chip${d===v?' sel':''}" onclick="setLockDelay(${v})">${l}</div>`).join('')}</div>
+      <div class="sd" style="margin-top:8px">Wie lange die App im Hintergrund sein darf, bevor sie sich sperrt.</div>
+    </div>
+    <div class="setrow">
+      <div><div class="sl">PIN ändern</div><div class="sd">Neue Ziffern vergeben.</div></div>
+      <button class="btn small ghost" onclick="setupPin()">Ändern</button>
+    </div>
+    <div class="setrow">
+      <div><div class="sl">Jetzt sperren</div><div class="sd">Bevor du das Handy weggibst.</div></div>
+      <button class="btn small ghost" onclick="lockNow()">Sperren</button>
+    </div>` : ''}`;
 }
 
 // Persistenten Speicher anfragen (schützt den Offline-Puffer)
