@@ -117,6 +117,10 @@
   .mood .swatch{width:20px;height:20px;border-radius:50%}
   .mood small{font-size:9px;color:var(--mist-dim)}
   .mood.sel{border-color:var(--candle);background:var(--haze-soft)}
+  .mood.locked{cursor:default}
+  .mood.dim{opacity:.32}
+  .mood.locked.sel{border-color:var(--candle-dim)}
+  .mood-note{font-size:11px;color:var(--mist-dim);margin-top:9px;line-height:1.45;font-style:italic}
 
   .chips{display:flex;flex-wrap:wrap;gap:6px}
   .chip{font-size:12.5px;padding:6px 12px;border-radius:20px;border:1px solid var(--haze-soft);background:var(--dusk);color:var(--mist);cursor:pointer;transition:.15s}
@@ -487,6 +491,7 @@
           <div class="hint">Erst die Grundstimmung des Tages — ein Tap. Dann die einzelnen Gefühle, die vorkamen: so viele oder so wenige, wie zutreffen.</div>
           <div class="field">
             <div class="moods" id="moods"></div>
+            <div class="mood-note" id="mood-note"></div>
             <div class="emo-head">
               <span>Gefühle</span>
               <button class="emo-edit" id="emo-edit" onclick="toggleEmoEdit()">bearbeiten</button>
@@ -729,6 +734,7 @@ let emoEdit = false, timer = null, tsec = 900, curTheme = '', curLinkDate = null
 let calY = new Date().getFullYear(), calM = new Date().getMonth(), calSel = null;
 let editingId = null;
 let writeDate = null;   // Datum, für das gerade geschrieben wird (Standard: heute)
+let moodLocked = false; // Stimmung eines vergangenen Tages bleibt stehen, ist nicht änderbar
 
 const $ = s => document.querySelector(s);
 const iso = off => { const d = new Date(); d.setDate(d.getDate() + off); return d.toISOString().slice(0,10); };
@@ -768,13 +774,15 @@ function loadIntoForm(e) {
   $('#f-text').value = e.txt; $('#f-title').value = e.t;
   $('#f-grat').value = e.g || ''; $('#f-see').value = e.see || '';
   sel.mood = e.m; sel.emos = new Set(e.emos); sel.mark = e.mark; sel.theme = e.theme || '';
+  // Stimmung an einem vergangenen Tag bleibt stehen — sie ist ein Datenpunkt von damals
+  moodLocked = (e.d !== iso(0));
   renderForm();
-  document.querySelectorAll('.mood').forEach((n,i) => n.classList.toggle('sel', i+1 === e.m));
   if (e.mark === 'c') setMark('c');
 }
 function resetForm() {
   editingId = null;
   writeDate = iso(0);
+  moodLocked = false;
   ['f-text','f-title','f-grat','f-see'].forEach(i => $('#'+i).value = '');
   sel = { mood:null, emos:new Set(), mark:null, theme:'' };
   emoEdit = false;
@@ -830,11 +838,16 @@ function renderForm() {
   const m = $('#moods'); m.innerHTML = '';
   MOOD_C.forEach((c,i) => {
     const b = document.createElement('div');
-    b.className = 'mood' + (sel.mood === i+1 ? ' sel' : '');
+    const isSel = sel.mood === i+1;
+    b.className = 'mood' + (isSel ? ' sel' : '') + (moodLocked ? ' locked' : '') + (moodLocked && !isSel ? ' dim' : '');
     b.innerHTML = `<div class="swatch" style="background:${c}"></div><small>${MOOD_L[i]}</small>`;
-    b.onclick = () => { sel.mood = i+1; document.querySelectorAll('.mood').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); };
+    if (!moodLocked) {
+      b.onclick = () => { sel.mood = i+1; document.querySelectorAll('.mood').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); };
+    }
     m.appendChild(b);
   });
+  const note = $('#mood-note');
+  if (note) note.textContent = moodLocked ? 'Die Stimmung von damals bleibt stehen — nur der Text lässt sich ergänzen.' : '';
   renderEmos();
 }
 
@@ -873,12 +886,20 @@ async function saveEntry() {
   const typed = $('#f-theme');
   const theme = sel.theme || (typed ? typed.value.trim() : '');
 
+  // Bei gesperrten (vergangenen) Tagen die ursprüngliche Stimmung bewahren
+  const day = writeDate || iso(0);
+  let mood = sel.mood;
+  if (moodLocked) {
+    const orig = entries.find(x => x.d === day);
+    if (orig) mood = orig.m;
+  }
+
   // noch nicht abgeschickter Win im Feld? mitnehmen statt verlieren
   const pending = $('#f-win').value.trim();
-  if (pending) { await insertWin(pending, writeDate || iso(0)); $('#f-win').value = ''; }
+  if (pending) { await insertWin(pending, day); $('#f-win').value = ''; }
 
   const e = {
-    d: writeDate || iso(0), t: title, txt, m: sel.mood, emos: [...sel.emos],
+    d: day, t: title, txt, m: mood, emos: [...sel.emos],
     g: $('#f-grat').value.trim(), see: $('#f-see').value.trim(),
     theme, mark: sel.mark, tags: ['Tagesbericht']
   };
@@ -1029,7 +1050,6 @@ function closeEntry() { $('#sheet').classList.remove('on'); }
 function editEntry(id) {
   const e = entries.find(x => x.id === id);
   if (!e) return;
-  if (e.d !== iso(0)) { toast('Geschriebene Tage bleiben stehen — nur heute ist änderbar'); return; }
   closeEntry(); resetForm(); editingId = id; writeDate = e.d; loadIntoForm(e);
   updateFormMode();
   go('neu');
