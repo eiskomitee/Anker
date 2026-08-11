@@ -287,10 +287,10 @@
   .sh-empty{text-align:center;color:var(--mist-dim);font-size:13.5px;font-style:italic;padding:30px 10px 20px}
 
   nav{display:flex;flex-shrink:0;border-top:1px solid var(--haze-soft);background:rgba(22,26,38,.92);
-    backdrop-filter:blur(10px);padding:8px 6px calc(8px + env(safe-area-inset-bottom))}
-  nav button{flex:1;background:none;border:none;color:var(--mist-dim);font-family:var(--sans);font-size:10px;
-    letter-spacing:.3px;cursor:pointer;padding:6px 2px;display:flex;flex-direction:column;align-items:center;gap:5px}
-  nav button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+    backdrop-filter:blur(10px);padding:8px 3px calc(8px + env(safe-area-inset-bottom))}
+  nav button{flex:1;background:none;border:none;color:var(--mist-dim);font-family:var(--sans);font-size:9.5px;
+    letter-spacing:.2px;cursor:pointer;padding:6px 1px;display:flex;flex-direction:column;align-items:center;gap:5px}
+  nav button svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
   nav button.on{color:var(--candle)}
 
   .back{background:none;border:none;color:var(--mist);font-size:13px;cursor:pointer;padding:6px 0;margin-bottom:6px;font-family:var(--sans)}
@@ -682,6 +682,49 @@
 
         <div class="fab-note">Anker · deine Daten liegen verschlüsselt übertragen auf deinem eigenen Supabase-Projekt.</div>
       </section>
+
+      <!-- ============ TRÄUME ============ -->
+      <section id="s-traeume" class="screen">
+        <div class="eyebrow">Traum festhalten</div>
+        <p style="font-size:12.5px;color:var(--mist-dim);margin:0 4px 16px;line-height:1.55">
+          Schnell, bevor er verfliegt. Kein Titel nötig, keine Deutung — erst mal nur, was da war.
+        </p>
+
+        <div class="card">
+          <textarea id="d-text" rows="6" placeholder="Woran erinnerst du dich? Auch Bruchstücke zählen."></textarea>
+
+          <div style="margin-top:14px">
+            <label class="f">Stichworte — optional</label>
+            <div class="chips" id="d-tags"></div>
+            <div class="winbar" style="margin-top:9px">
+              <input type="text" id="d-tag-new" placeholder="Wasser, Fliegen, ein Haus …"
+                     onkeydown="if(event.key==='Enter')addDreamTag()">
+              <button onclick="addDreamTag()">+</button>
+            </div>
+          </div>
+
+          <div class="markerbox" style="margin-top:16px">
+            <div class="lead">Kennst du diesen Traum?</div>
+            <div class="onetap">
+              <div class="mbtn" id="d-mb" onclick="toggleDreamMark()">Das träume ich öfter<small>ein Tap, mehr nicht</small></div>
+            </div>
+            <div id="d-motif-slot"></div>
+          </div>
+
+          <button class="btn" id="d-save" onclick="saveDream()">Traum speichern</button>
+        </div>
+
+        <div class="eyebrow">Wiederkehrende Motive</div>
+        <div class="card" id="dream-motifs"></div>
+
+        <div class="eyebrow">Traumtagebuch</div>
+        <div id="dream-list"></div>
+
+        <div class="fab-note" style="margin-top:18px">
+          Tipp: gleich nach dem Aufwachen liegen bleiben und zuerst den Traum abrufen — bevor du zum Handy greifst.
+          Träume verfliegen in Sekunden.
+        </div>
+      </section>
     </main>
 
     <div id="sheet" class="sheet" onclick="if(event.target===this)closeEntry()">
@@ -698,6 +741,8 @@
         <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Schreiben</button>
       <button data-t="gedanken" onclick="go('gedanken')">
         <svg viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.5.4.8 1 .8 1.7V16h5.6v-.5c0-.7.3-1.3.8-1.7A6 6 0 0 0 12 3z"/></svg>Gedanken</button>
+      <button data-t="traeume" onclick="go('traeume')">
+        <svg viewBox="0 0 24 24"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></svg>Träume</button>
       <button data-t="verlauf" onclick="go('verlauf')">
         <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Verlauf</button>
       <button data-t="muster" onclick="go('muster')">
@@ -751,6 +796,7 @@ function go(t) {
   if (t === 'gedanken') renderLinkPicker();
   if (t === 'neu' && !editingId && !writeDate) { writeDate = iso(0); prefillToday(); }
   if (t === 'neu') updateFormMode();
+  if (t === 'traeume') renderDreams();
 }
 
 /* Wenn es für heute schon einen Eintrag gibt: bearbeiten statt zweiten anlegen */
@@ -1302,6 +1348,119 @@ function renderWinsOverview() {
     </div>`).join('');
 }
 
+/* ---------- Träume ---------- */
+let dreamTags = new Set();
+let dreamMark = false;
+let dreamMotif = '';
+
+function addDreamTag() {
+  const i = $('#d-tag-new');
+  const v = i.value.trim().toLowerCase();
+  if (!v || dreamTags.has(v)) { i.value = ''; return; }
+  dreamTags.add(v); i.value = ''; renderDreamTags(); i.focus();
+}
+function renderDreamTags() {
+  const box = $('#d-tags');
+  if (!box) return;
+  box.innerHTML = [...dreamTags].map(t =>
+    `<div class="chip sel" onclick="dreamTags.delete('${esc(t)}');renderDreamTags()">${esc(t)} <span class="x">×</span></div>`
+  ).join('') || '<span style="font-size:12px;color:var(--mist-dim);font-style:italic">Noch keine.</span>';
+}
+
+function toggleDreamMark() {
+  dreamMark = !dreamMark;
+  $('#d-mb').className = 'mbtn' + (dreamMark ? ' sel-c' : '');
+  const slot = $('#d-motif-slot');
+  if (!dreamMark) { slot.innerHTML = ''; dreamMotif = ''; return; }
+  const known = [...new Set(dreams.filter(d => d.motif).map(d => d.motif))];
+  slot.innerHTML = `<div class="tlead">Welches Motiv? Ordne es zu — oder benenne es neu.</div>
+    <div class="sugg" id="d-sugg">${known.map(k => `<div class="chip" data-k="${esc(k)}">${esc(k)}</div>`).join('')}</div>
+    <input type="text" id="d-motif-new" placeholder="z. B. Verfolgt werden, Fliegen, Prüfung" style="font-size:13.5px">
+    <button class="skip" onclick="dreamMotif='';renderDreamMotifSkip()" style="margin-top:8px">Ohne Namen lassen</button>`;
+  slot.querySelectorAll('#d-sugg .chip').forEach(c => c.onclick = () => {
+    slot.querySelectorAll('#d-sugg .chip').forEach(x => x.classList.remove('sel'));
+    c.classList.add('sel'); dreamMotif = c.dataset.k; $('#d-motif-new').value = '';
+  });
+}
+function renderDreamMotifSkip() {
+  const s = $('#d-motif-slot');
+  s.querySelectorAll('#d-sugg .chip').forEach(x => x.classList.remove('sel'));
+  const t = s.querySelector('#d-motif-new'); if (t) t.value = '';
+  s.querySelector('.tlead').textContent = 'Bleibt unbenannt — zählt trotzdem als wiederkehrend.';
+}
+
+async function saveDream() {
+  const body = $('#d-text').value.trim();
+  if (!body) { alert('Schreib wenigstens ein Bruchstück auf.'); $('#d-text').focus(); return; }
+  const typed = $('#d-motif-new');
+  const motif = dreamMotif || (typed ? typed.value.trim() : '');
+  $('#d-save').disabled = true; $('#d-save').textContent = 'Speichere …';
+  await insertDream({ body, tags: [...dreamTags], motif: dreamMark ? (motif || null) : null, recurring: dreamMark });
+  $('#d-save').disabled = false; $('#d-save').textContent = 'Traum speichern';
+  // zurücksetzen
+  $('#d-text').value = ''; dreamTags = new Set(); dreamMark = false; dreamMotif = '';
+  $('#d-mb').className = 'mbtn'; $('#d-motif-slot').innerHTML = '';
+  renderDreams(); toast('Traum festgehalten');
+}
+
+function renderDreams() {
+  renderDreamTags();
+  // Wiederkehrende Motive
+  const box = $('#dream-motifs');
+  const counts = {};
+  dreams.filter(d => d.motif).forEach(d => {
+    if (!counts[d.motif]) counts[d.motif] = { n: 0, last: d.entry_date };
+    counts[d.motif].n++;
+    if (d.entry_date > counts[d.motif].last) counts[d.motif].last = d.entry_date;
+  });
+  const keys = Object.keys(counts).sort((a,b) => counts[b].n - counts[a].n);
+  if (box) {
+    box.innerHTML = keys.length
+      ? keys.map(k => `<div class="theme">
+          <div class="tl">
+            <div class="tn">${esc(k)}</div>
+            <div class="ts ${counts[k].n >= 3 ? 'warn' : ''}">${counts[k].n}× geträumt, zuletzt ${fmt(counts[k].last)}</div>
+          </div>
+        </div>`).join('')
+      : '<div style="color:var(--mist-dim);font-size:13px;font-style:italic">Noch keine wiederkehrenden Motive markiert.</div>';
+  }
+  // Liste
+  const list = $('#dream-list');
+  if (!list) return;
+  if (!dreams.length) {
+    list.innerHTML = '<div class="sh-empty">Noch keine Träume festgehalten.</div>';
+    return;
+  }
+  list.innerHTML = dreams.map(d => `<div class="entry" onclick="openDream('${d.id}')">
+      <div class="dot" style="background:var(--m2)"></div>
+      <div class="body">
+        <div class="meta"><span>${fmt(d.entry_date)}</span>${d.recurring ? '<span class="marker circ">träume ich öfter</span>' : ''}</div>
+        <p style="margin-top:3px">${esc(d.body)}</p>
+        ${d.tags?.length ? `<div class="tags">${d.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+function openDream(id) {
+  const d = dreams.find(x => x.id === id);
+  if (!d) return;
+  $('#sheet-body').innerHTML = `
+    <div class="sh-date">${fmt(d.entry_date)}</div>
+    <div class="sh-title" style="font-size:18px">Traum</div>
+    ${d.recurring ? `<div class="sh-mood"><span class="marker circ">träume ich öfter${d.motif ? ' · ' + esc(d.motif) : ''}</span></div>` : ''}
+    <div class="sh-text">${esc(d.body)}</div>
+    ${d.tags?.length ? `<div class="sh-block"><h5>Stichworte</h5><div class="tags">${d.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div></div>` : ''}
+    <div class="sh-block">
+      <button class="btn small ghost danger" onclick="removeDream('${d.id}')">Löschen</button>
+    </div>`;
+  $('#sheet').classList.add('on');
+}
+async function removeDream(id) {
+  const d = dreams.find(x => x.id === id);
+  if (!d || !confirm(`Diesen Traum vom ${fmt(d.entry_date)} löschen?`)) return;
+  if (await deleteDream(id)) { closeEntry(); renderDreams(); toast('Gelöscht'); }
+}
+
 /* ---------- Farbschema ---------- */
 function renderSchemes() {
   $('#scheme-list').innerHTML = Object.entries(SCHEMES).map(([k,v]) => `
@@ -1375,6 +1534,7 @@ let USER = null;
 let entries = [];
 let protocols = [];
 let wins = [];
+let dreams = [];
 let settings = { scheme: 'daemmerung', emotions: [] };
 
 /* ---------- Offline-Puffer ----------
@@ -1409,6 +1569,7 @@ function applyOp(op) {
   if (op.kind === 'entry')    return sb.from('anker_entries').upsert(op.row, { onConflict: 'user_id,entry_date' });
   if (op.kind === 'protocol') return sb.from('anker_protocols').insert(op.row);
   if (op.kind === 'win')      return sb.from('anker_wins').insert(op.row);
+  if (op.kind === 'dream')    return sb.from('anker_dreams').insert(op.row);
   if (op.kind === 'settings') return sb.from('anker_settings').upsert(op.row);
   return Promise.resolve({ error: 'unbekannte Operation' });
 }
@@ -1434,11 +1595,12 @@ async function currentUser() {
 /* ---------- Laden ---------- */
 async function loadAll() {
   if (!USER) return;
-  const [e, p, w, s] = await Promise.all([
+  const [e, p, w, s, dr] = await Promise.all([
     sb.from('anker_entries').select('*').order('entry_date', { ascending: false }),
     sb.from('anker_protocols').select('*').order('entry_date', { ascending: false }),
     sb.from('anker_wins').select('*').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(300),
-    sb.from('anker_settings').select('*').eq('user_id', USER.id).maybeSingle()
+    sb.from('anker_settings').select('*').eq('user_id', USER.id).maybeSingle(),
+    sb.from('anker_dreams').select('*').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(300)
   ]);
 
   if (e.error || p.error || w.error) {
@@ -1449,6 +1611,7 @@ async function loadAll() {
   entries   = (e.data || []).map(fromRow);
   protocols = p.data || [];
   wins      = w.data || [];
+  dreams    = dr.data || [];
 
   if (s.data) {
     settings = { scheme: s.data.scheme, emotions: s.data.emotions || [] };
@@ -1534,10 +1697,26 @@ async function deleteEntry(id) {
   return true;
 }
 
+async function insertDream(d) {
+  const row = { user_id: USER.id, entry_date: d.entry_date || iso(0),
+    body: d.body, tags: d.tags || [], motif: d.motif || null, recurring: !!d.recurring };
+  if (!navigator.onLine) { outbox.push({ kind: 'dream', row }); dreams.unshift(row); syncBadge(); toast('Offline gespeichert'); return; }
+  const { error } = await sb.from('anker_dreams').insert(row);
+  if (error) { outbox.push({ kind: 'dream', row }); syncBadge(); toast('Server nicht erreichbar — gepuffert'); return; }
+  await loadAll();
+}
+
+async function deleteDream(id) {
+  const { error } = await sb.from('anker_dreams').delete().eq('id', id);
+  if (error) { toast('Löschen fehlgeschlagen'); return false; }
+  await loadAll();
+  return true;
+}
+
 /* ---------- Export / Import ---------- */
 function exportJSON() {
   const blob = new Blob([JSON.stringify({
-    exported: new Date().toISOString(), version: 1, entries, protocols, wins, settings
+    exported: new Date().toISOString(), version: 1, entries, protocols, wins, dreams, settings
   }, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1560,6 +1739,13 @@ async function importJSON(file) {
     if (error) { toast('Import abgebrochen: ' + error.message); return; }
   }
   await loadAll(); renderAll();
+  // Träume aus einem Anker-Export mit einspielen, falls vorhanden
+  if (Array.isArray(data.dreams) && data.dreams.length) {
+    const drows = data.dreams.map(d => ({ user_id: USER.id, entry_date: d.entry_date || iso(0),
+      body: d.body || '', tags: d.tags || [], motif: d.motif || null, recurring: !!d.recurring }))
+      .filter(d => d.body);
+    if (drows.length) { await sb.from('anker_dreams').insert(drows); await loadAll(); }
+  }
   toast(`${rows.length} Einträge importiert`);
 }
 
