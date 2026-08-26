@@ -596,6 +596,8 @@
         </div>
         <button class="btn" onclick="finishProtocol()">Protokoll abschließen</button>
 
+        <div class="eyebrow">Deine Protokolle</div>
+        <div id="proto-list"></div>
         </section>
 
       <!-- ============ VERLAUF ============ -->
@@ -793,7 +795,7 @@ function go(t) {
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
   $('main').scrollTop = 0;
   if (t !== 'gedanken') { $('#bridge-slot').innerHTML = ''; curTheme = ''; }
-  if (t === 'gedanken') renderLinkPicker();
+  if (t === 'gedanken') { renderLinkPicker(); renderProtocols(); }
   if (t === 'neu' && !editingId && !writeDate) { writeDate = iso(0); prefillToday(); }
   if (t === 'neu') updateFormMode();
   if (t === 'traeume') renderDreams();
@@ -1219,6 +1221,58 @@ async function finishProtocol() {
   renderAll(); go('muster'); toast('Protokoll gespeichert');
 }
 
+/* Übersicht aller Protokolle — auch die ohne Thema/Datum */
+function renderProtocols() {
+  const box = $('#proto-list');
+  if (!box) return;
+  if (!protocols.length) {
+    box.innerHTML = '<div class="sh-empty">Noch keine Protokolle geschrieben.</div>';
+    return;
+  }
+  const sorted = [...protocols].sort((a,b) =>
+    (b.entry_date + (b.created_at||'')).localeCompare(a.entry_date + (a.created_at||'')));
+  box.innerHTML = sorted.map(p => {
+    const tag = p.theme ? `<span class="tag">${esc(p.theme)}</span>` : '';
+    const link = p.linked_date ? `<span class="marker circ">${fmt(p.linked_date)}</span>` : '';
+    return `<div class="entry" onclick="openProtocolDetail('${p.id}')">
+      <div class="dot" style="background:var(--m4)"></div>
+      <div class="body">
+        <div class="meta"><span>${fmt(p.entry_date)}</span>${link}</div>
+        <p style="margin-top:3px">„${esc(p.belief)}"</p>
+        ${tag ? `<div class="tags">${tag}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openProtocolDetail(id) {
+  const p = protocols.find(x => x.id === id);
+  if (!p) return;
+  const blk = (t,v) => v ? `<div class="sh-block"><h5>${t}</h5><p>${esc(v)}</p></div>` : '';
+  $('#sheet-body').innerHTML = `
+    <div class="sh-date">Gedankenprotokoll · ${fmt(p.entry_date)}</div>
+    <div class="sh-title" style="font-size:18px">${p.theme ? esc(p.theme) : 'Ohne Thema'}</div>
+    ${p.linked_date ? `<div class="sh-mood"><span class="marker circ">verknüpft mit ${fmt(p.linked_date)}</span></div>` : ''}
+    ${blk('Auslöser (A)', p.situation)}
+    ${blk('Der Satz im Kopf (B)', p.belief)}
+    ${blk('Was folgte (C)', p.feeling)}
+    ${blk('Dafür (D)', p.evidence_for)}
+    ${blk('Dagegen (D)', p.evidence_against)}
+    ${blk('Was jetzt stimmt (E)', p.balanced)}
+    ${p.intensity_before != null && p.intensity_after != null
+      ? `<div class="sh-block"><h5>Intensität</h5><p>davor ${p.intensity_before} % → danach ${p.intensity_after} %</p></div>` : ''}
+    <div class="sh-block">
+      <button class="btn small ghost danger" onclick="removeProtocol('${p.id}')">Löschen</button>
+    </div>`;
+  $('#sheet').classList.add('on');
+}
+
+async function removeProtocol(id) {
+  const p = protocols.find(x => x.id === id);
+  if (!p || !confirm(`Dieses Protokoll vom ${fmt(p.entry_date)} löschen?`)) return;
+  if (await deleteProtocol(id)) { closeEntry(); renderProtocols(); renderAll(); toast('Gelöscht'); }
+}
+
 /* ---------- Statistik ---------- */
 const last30 = () => entries.filter(e => e.d >= iso(-29));
 
@@ -1484,6 +1538,7 @@ function renderAll() {
   renderHorizon(); renderLists(); renderStats(); renderThemes();
   renderGratitude(); renderEmoBars(); renderWeekday();
   renderRecentWins(); renderWinsOverview(); renderDayWins();
+  renderProtocols();
 }
 
 /* ---------- Start ---------- */
@@ -1708,6 +1763,13 @@ async function insertDream(d) {
 
 async function deleteDream(id) {
   const { error } = await sb.from('anker_dreams').delete().eq('id', id);
+  if (error) { toast('Löschen fehlgeschlagen'); return false; }
+  await loadAll();
+  return true;
+}
+
+async function deleteProtocol(id) {
+  const { error } = await sb.from('anker_protocols').delete().eq('id', id);
   if (error) { toast('Löschen fehlgeschlagen'); return false; }
   await loadAll();
   return true;
