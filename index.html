@@ -449,6 +449,7 @@
         </div>
 
         <div id="nudge"></div>
+        <div id="draft-banner"></div>
 
         <div class="eyebrow">Heute</div>
         <div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:12px">
@@ -468,7 +469,7 @@
 
       <!-- ============ SCHREIBEN ============ -->
       <section id="s-neu" class="screen">
-        <button class="back" onclick="resetForm();go('heute')">← Zurück</button>
+        <button class="back" onclick="go('heute')">← Zurück</button>
         <div id="form-mode" style="font-size:11px;color:var(--candle-dim);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px"></div>
 
         <div class="zug active" style="margin-top:8px">
@@ -476,12 +477,12 @@
           <h3>Was war</h3>
           <div class="hint">Roh. Ungefiltert. Auch das Hässliche. Niemand liest mit.</div>
           <div class="field">
-            <textarea id="f-text" rows="8" placeholder="Schreib einfach los."></textarea>
+            <textarea id="f-text" rows="8" placeholder="Schreib einfach los." oninput="queueDraftSave()"></textarea>
             <div class="timerbar">
               <span id="tm-label">15 Minuten sind genug. Danach hört Schreiben auf zu helfen.</span>
               <button id="tm-btn" onclick="toggleTimer()">Timer</button>
             </div>
-            <input type="text" id="f-title" placeholder="Titel — wie heißt dieser Tag?" style="margin-top:10px;font-size:14.5px">
+            <input type="text" id="f-title" placeholder="Titel — wie heißt dieser Tag?" style="margin-top:10px;font-size:14.5px" oninput="queueDraftSave()">
           </div>
         </div>
 
@@ -506,7 +507,7 @@
           <h3>Dankbar für</h3>
           <div class="hint">Eine Sache reicht. Auch an Tagen, an denen es sich falsch anfühlt.</div>
           <div class="field">
-            <textarea id="f-grat" rows="2" placeholder="Heute bin ich dankbar für …"></textarea>
+            <textarea id="f-grat" rows="2" placeholder="Heute bin ich dankbar für …" oninput="queueDraftSave()"></textarea>
           </div>
         </div>
 
@@ -540,12 +541,12 @@
             <div style="font-size:11.5px;color:var(--mist-dim);margin:-4px 0 8px;line-height:1.5">
               Ein Satz. Wenn keiner kommt: leer lassen. Das ist auch eine Antwort.
             </div>
-            <textarea id="f-see" rows="3" placeholder="Du hast heute gemerkt, dass …"></textarea>
+            <textarea id="f-see" rows="3" placeholder="Du hast heute gemerkt, dass …" oninput="queueDraftSave()"></textarea>
           </div>
         </details>
 
         <button class="btn" id="save-btn" onclick="saveEntry()">Eintrag speichern</button>
-        <button class="btn ghost" onclick="resetForm();go('heute')">Verwerfen</button>
+        <button class="btn ghost" onclick="confirmDiscard()">Verwerfen</button>
       </section>
 
       <!-- ============ GEDANKEN ============ -->
@@ -788,6 +789,107 @@ const iso = off => { const d = new Date(); d.setDate(d.getDate() + off); return 
 const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString('de-DE', { weekday:'short', day:'2-digit', month:'short' });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+/* ---------- Entwurfssicherung ----------
+   Jeder Tastendruck im Schreiben-Bildschirm landet, leicht verzögert,
+   im localStorage — pro Tag ein eigener Platz. Das übersteht einen
+   Fehltipp auf „Zurück", das Wegwechseln der App und sogar einen
+   Absturz oder Neuladen der Seite, da es unabhängig vom laufenden
+   JavaScript-Zustand ist. */
+const DRAFT_PREFIX = 'anker_draft_';
+let draftTimer = null;
+
+function draftKeyFor(date) { return DRAFT_PREFIX + date; }
+
+function saveDraftNow() {
+  if (!writeDate) return;
+  const txt = $('#f-text') ? $('#f-text').value : '';
+  // Ein leerer Entwurf ist kein Entwurf — nicht anlegen, ggf. aufräumen
+  const title = $('#f-title') ? $('#f-title').value : '';
+  if (!txt.trim() && !title.trim()) { clearDraft(writeDate); return; }
+  try {
+    localStorage.setItem(draftKeyFor(writeDate), JSON.stringify({
+      txt, title,
+      grat: $('#f-grat') ? $('#f-grat').value : '',
+      see:  $('#f-see')  ? $('#f-see').value  : '',
+      mood: sel.mood, emos: [...sel.emos], mark: sel.mark, theme: sel.theme,
+      ts: Date.now()
+    }));
+  } catch {}
+}
+function queueDraftSave() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(saveDraftNow, 500);
+}
+function loadDraft(date) {
+  try {
+    const raw = localStorage.getItem(draftKeyFor(date));
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+function clearDraft(date) {
+  try { localStorage.removeItem(draftKeyFor(date)); } catch {}
+}
+/* Über alle Tage hinweg: gibt es irgendwo einen liegen gebliebenen Entwurf? */
+function anyLeftoverDraft() {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(DRAFT_PREFIX)) {
+        const d = loadDraft(k.slice(DRAFT_PREFIX.length));
+        if (d && (d.txt || '').trim()) return { date: k.slice(DRAFT_PREFIX.length), draft: d };
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/* Nach dem Laden eines Tages prüfen, ob ein Entwurf mehr Text enthält
+   als das, was gerade angezeigt wird — dann war das die zuletzt
+   getippte, noch nicht gespeicherte Fassung, und die gewinnt. */
+function restoreDraftIfNewer(date) {
+  const d = loadDraft(date);
+  if (!d) return;
+  const shown = $('#f-text').value || '';
+  if ((d.txt || '').length <= shown.length && d.txt === shown) return; // nichts Neueres
+  if ((d.txt || '').trim().length === 0) return;
+  $('#f-text').value = d.txt || '';
+  $('#f-title').value = d.title || '';
+  $('#f-grat').value = d.grat || '';
+  $('#f-see').value = d.see || '';
+  if (d.mood) sel.mood = d.mood;
+  if (d.emos) sel.emos = new Set(d.emos);
+  if (d.mark) sel.mark = d.mark;
+  if (d.theme) sel.theme = d.theme;
+  renderForm(); renderMarkUI();
+  toast('Entwurf wiederhergestellt');
+}
+
+/* Banner auf „Heute", falls irgendwo ein nicht gespeicherter Entwurf liegt
+   (z. B. nach einem Neuladen der Seite mitten im Schreiben) */
+function renderDraftBanner() {
+  const box = $('#draft-banner');
+  if (!box) return;
+  const found = anyLeftoverDraft();
+  if (!found || found.date === writeDate) { box.innerHTML = ''; return; }
+  const label = found.date === iso(0) ? 'von heute' : 'vom ' + fmt(found.date);
+  box.innerHTML = `<div class="card" style="border-style:dashed;display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px">
+      <div>
+        <div style="font-family:var(--serif);font-size:15px">Nicht gespeicherter Entwurf ${label}</div>
+        <div style="font-size:11.5px;color:var(--mist-dim);margin-top:2px">Sieht aus, als wärst du unterbrochen worden.</div>
+      </div>
+      <button class="btn small" onclick="resumeDraft('${found.date}')">Weiter</button>
+    </div>`;
+}
+function resumeDraft(date) {
+  closeEntry?.();
+  writeDate = date; editingId = (entries.find(x => x.d === date) || {}).id || null;
+  const e = entries.find(x => x.d === date);
+  if (e) loadIntoForm(e);
+  updateFormMode();
+  go('neu');
+  restoreDraftIfNewer(date);
+}
+
 /* ---------- Navigation ---------- */
 function go(t) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
@@ -798,6 +900,7 @@ function go(t) {
   if (t === 'gedanken') { renderLinkPicker(); renderProtocols(); }
   if (t === 'neu' && !editingId && !writeDate) { writeDate = iso(0); prefillToday(); }
   if (t === 'neu') updateFormMode();
+  if (t === 'heute') renderDraftBanner();
   if (t === 'traeume') renderDreams();
 }
 
@@ -807,6 +910,7 @@ function prefillFor(date) {
   const e = entries.find(x => x.d === date);
   if (e) { editingId = e.id; loadIntoForm(e); }
   updateFormMode(); renderDayWins();
+  restoreDraftIfNewer(date);
 }
 function prefillToday() { prefillFor(iso(0)); }
 
@@ -825,7 +929,7 @@ function loadIntoForm(e) {
   // Stimmung an einem vergangenen Tag bleibt stehen — sie ist ein Datenpunkt von damals
   moodLocked = (e.d !== iso(0));
   renderForm();
-  if (e.mark === 'c') setMark('c');
+  renderMarkUI();
 }
 function resetForm() {
   editingId = null;
@@ -839,6 +943,17 @@ function resetForm() {
   updateFormMode();
   const w = $('#f-win'); if (w) w.value = '';
   renderForm(); renderDayWins();
+}
+
+/* Verwerfen nur mit Rückfrage, wenn tatsächlich etwas dranhängt —
+   ein Fehltipp soll nie wieder einen ganzen Text kosten. */
+function confirmDiscard() {
+  const hasContent = $('#f-text').value.trim().length > 0 || $('#f-title').value.trim().length > 0;
+  if (hasContent && !confirm('Diesen Eintrag wirklich verwerfen? Der Text ist dann weg.')) return;
+  if (writeDate) clearDraft(writeDate);
+  resetForm();
+  go('heute');
+  renderDraftBanner();
 }
 
 /* ---------- Timer ---------- */
@@ -860,17 +975,24 @@ function toggleTimer() {
 /* ---------- Marker ---------- */
 function setMark(m) {
   sel.mark = (sel.mark === m) ? null : m;
+  renderMarkUI();
+  queueDraftSave();
+}
+/* Zeigt den aktuellen sel.mark/sel.theme-Zustand an, OHNE zu toggeln —
+   wichtig beim Laden eines gespeicherten Tages, sonst würde das bloße
+   Anzeigen die Markierung eines vorhandenen Eintrags wieder löschen. */
+function renderMarkUI() {
   $('#mb-c').className = 'mbtn' + (sel.mark === 'c' ? ' sel-c' : '');
   const slot = $('#theme-slot');
-  if (sel.mark !== 'c') { slot.innerHTML = ''; sel.theme = ''; return; }
+  if (sel.mark !== 'c') { slot.innerHTML = ''; return; }
   const known = Object.keys(themeCounts());
   slot.innerHTML = `<div class="tlead">Kennst du das schon? Dann ordne es zu — sonst überspring es einfach.</div>
     <div class="sugg" id="sugg">${known.map(k => `<div class="chip${sel.theme===k?' sel':''}" data-k="${esc(k)}">${esc(k)}</div>`).join('')}</div>
-    <input type="text" id="f-theme" placeholder="Oder neu benennen (optional)" style="font-size:13.5px">
+    <input type="text" id="f-theme" placeholder="Oder neu benennen (optional)" style="font-size:13.5px" value="${sel.theme && !known.includes(sel.theme) ? esc(sel.theme) : ''}" oninput="queueDraftSave()">
     <button class="skip" onclick="skipTheme()" style="margin-top:8px">Ohne Namen lassen</button>`;
   slot.querySelectorAll('#sugg .chip').forEach(c => c.onclick = () => {
     slot.querySelectorAll('#sugg .chip').forEach(x => x.classList.remove('sel'));
-    c.classList.add('sel'); sel.theme = c.dataset.k; $('#f-theme').value = '';
+    c.classList.add('sel'); sel.theme = c.dataset.k; $('#f-theme').value = ''; queueDraftSave();
   });
 }
 function skipTheme() {
@@ -879,6 +1001,7 @@ function skipTheme() {
   s.querySelectorAll('#sugg .chip').forEach(x => x.classList.remove('sel'));
   const t = s.querySelector('#f-theme'); if (t) t.value = '';
   s.querySelector('.tlead').textContent = 'Bleibt unbenannt — zählt trotzdem mit.';
+  queueDraftSave();
 }
 
 /* ---------- Formular ---------- */
@@ -890,7 +1013,7 @@ function renderForm() {
     b.className = 'mood' + (isSel ? ' sel' : '') + (moodLocked ? ' locked' : '') + (moodLocked && !isSel ? ' dim' : '');
     b.innerHTML = `<div class="swatch" style="background:${c}"></div><small>${MOOD_L[i]}</small>`;
     if (!moodLocked) {
-      b.onclick = () => { sel.mood = i+1; document.querySelectorAll('.mood').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); };
+      b.onclick = () => { sel.mood = i+1; document.querySelectorAll('.mood').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); queueDraftSave(); };
     }
     m.appendChild(b);
   });
@@ -907,7 +1030,7 @@ function renderEmos() {
     c.innerHTML = esc(t) + (emoEdit ? '<span class="x">×</span>' : '');
     c.onclick = () => {
       if (emoEdit) { settings.emotions = settings.emotions.filter(x => x !== t); sel.emos.delete(t); saveSettings(); renderEmos(); return; }
-      c.classList.toggle('sel'); sel.emos.has(t) ? sel.emos.delete(t) : sel.emos.add(t);
+      c.classList.toggle('sel'); sel.emos.has(t) ? sel.emos.delete(t) : sel.emos.add(t); queueDraftSave();
     };
     node.appendChild(c);
   });
@@ -953,6 +1076,7 @@ async function saveEntry() {
   };
   $('#save-btn').disabled = true; $('#save-btn').textContent = 'Speichere …';
   await upsertEntry(e);
+  clearDraft(day);
   $('#save-btn').disabled = false; $('#save-btn').textContent = 'Eintrag speichern';
   resetForm(); renderAll(); go('heute'); toast('Gespeichert');
 }
@@ -1101,6 +1225,7 @@ function editEntry(id) {
   closeEntry(); resetForm(); editingId = id; writeDate = e.d; loadIntoForm(e);
   updateFormMode();
   go('neu');
+  restoreDraftIfNewer(e.d);
 }
 
 // Leeren Vergangenheitstag aus dem Kalender nachtragen
@@ -1108,6 +1233,7 @@ function writeForDate(date) {
   closeEntry(); resetForm(); writeDate = date;
   updateFormMode();
   go('neu');
+  restoreDraftIfNewer(date);
   $('#f-text').focus();
 }
 async function removeEntry(id) {
@@ -1538,7 +1664,7 @@ function renderAll() {
   renderHorizon(); renderLists(); renderStats(); renderThemes();
   renderGratitude(); renderEmoBars(); renderWeekday();
   renderRecentWins(); renderWinsOverview(); renderDayWins();
-  renderProtocols();
+  renderProtocols(); renderDraftBanner();
 }
 
 /* ---------- Start ---------- */
